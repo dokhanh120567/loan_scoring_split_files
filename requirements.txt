@@ -1,0 +1,28 @@
+# Core ML
+pandas>=1.4.0
+numpy>=1.22.0
+scikit-learn>=1.1.0
+xgboost>=1.7.0
+shap>=0.41.0
+
+# API
+fastapi>=0.95.0
+uvicorn[standard]>=0.22.0
+
+# Fairness & tuning
+fairlearn>=0.8.0
+imbalanced-learn
+optuna
+
+# Utils
+joblib>=1.2.0
+faker>=18.0.0
+tqdm
+python-dotenv>=0.21.0
+
+# DB
+sqlalchemy>=2.0.0
+pymysql>=1.0.2
+
+# Testing (optional)
+pytest
