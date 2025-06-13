@@ -29,7 +29,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 # Load artifacts
 BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_PATH = Path("model/xgboost_model.json")
+MODEL_PATH = Path("model/xgb_model.json")
 ENCODER_PATH = BASE_DIR / "model/onehot_encoder.joblib"
 SCALER_PATH = BASE_DIR / "model/standard_scaler.joblib"
 FEATURES_PATH = BASE_DIR / "model/feature_names.joblib"
