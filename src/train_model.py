@@ -17,75 +17,70 @@ SCALER_PATH = "model/scaler.pkl"
 FEATURES_PATH = "model/feature_cols.pkl"
 
 def train():
-    # Load data
     df = load_data()
     print(f"✅ Dữ liệu đọc từ DB: {df.shape}")
-    
-    # Fit transformers
-    ohe, scaler = fit_transformers(df)
-    
-    # Preprocess data
-    X, y, feature_names = preprocess_for_training(df, ohe, scaler)
-    
-    # Save feature names
-    joblib.dump(feature_names, FEATURES_PATH)
-    
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    # Train model
-    model = train_model(X_train, y_train)
-    
-    # Evaluate model
-    evaluate_model(model, X_test, y_test)
-    
-    # Save model and transformers
-    save_model(model, ohe, scaler)
-    
-    print("✅ Training completed successfully!")
 
-def train_model(X_train, y_train):
+    # 👉 Fit encoder + scaler
+    ohe, scaler = fit_transformers(df)
+
+    # 👉 Tiền xử lý dữ liệu
+    X, y = preprocess_for_training(df, ohe, scaler)
+
+    # 👉 Check số lượng nhãn
+    label_counts = y.value_counts()
+    print("📊 Phân phối label:")
+    print(label_counts)
+
+    if len(label_counts) < 2:
+        raise ValueError("❌ Không đủ số lớp để huấn luyện mô hình phân loại.")
+    if label_counts.min() < 2:
+        raise ValueError("❌ Một lớp có quá ít mẫu. Cần ≥ 2 mẫu mỗi lớp để stratify.")
+
+    # 👉 Tách dữ liệu train/validation
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
     # 👉 Chuyển sang DMatrix
     dtrain = xgb.DMatrix(X_train, label=y_train)
+    dval = xgb.DMatrix(X_val, label=y_val)
 
     # 👉 Cấu hình XGBoost
     params = {
-        "objective": "binary:logistic",
-        "eval_metric": "auc",
-        "max_depth": 6,
-        "eta": 0.1,
-        "subsample": 0.8,
-        "colsample_bytree": 0.8,
-        "min_child_weight": 1,
-        "gamma": 0.1,
-        "tree_method": "hist"
+        'objective': 'binary:logistic',
+        'eval_metric': 'auc',
+        'tree_method': 'hist',
+        'eta': 0.1,
+        'max_depth': 6,
+        'subsample': 0.8,
+        'colsample_bytree': 0.8,
+        'seed': 42
     }
 
-    # 👉 Train model
+    # 👉 Huấn luyện
     model = xgb.train(
         params,
         dtrain,
         num_boost_round=200,
-        evals=[(dtrain, "train")],
+        evals=[(dval, "val")],
         early_stopping_rounds=20,
         verbose_eval=10
     )
-    return model
 
-def evaluate_model(model, X_test, y_test):
-    # 👉 Tính AUC
-    y_pred = model.predict(xgb.DMatrix(X_test))
-    auc = roc_auc_score(y_test, y_pred)
-    print(f"🎯 Test AUC: {auc:.4f}")
-
-def save_model(model, ohe, scaler):
     # 👉 Lưu mô hình và transformer
     os.makedirs("model", exist_ok=True)
     model.save_model(MODEL_PATH)
     joblib.dump(ohe, ENCODER_PATH)
     joblib.dump(scaler, SCALER_PATH)
+    joblib.dump(X.columns.tolist(), FEATURES_PATH)
+
     print(f"\n✅ Mô hình đã lưu tại: {MODEL_PATH}")
     print(f"✅ Encoder & Scaler saved vào thư mục model/")
+
+    # 👉 Tính AUC
+    y_pred = model.predict(dval)
+    auc = roc_auc_score(y_val, y_pred)
+    print(f"🎯 Validation AUC: {auc:.4f}")
 
 if __name__ == "__main__":
     train()
