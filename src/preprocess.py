@@ -32,6 +32,7 @@ def load_data():
 # -----------------------------
 # 🎯 Sinh thêm đặc trưng mới (nếu cần)
 # -----------------------------
+### Cái này bỏ nhé #### a định xử lí cái này chỉ có 2 biến Indpendent và Family thôi 
 def process_marital_status(df: pd.DataFrame) -> pd.DataFrame:
     """
     Xử lý marital_status bằng cách gộp nhóm và cân bằng lại mẫu
@@ -64,17 +65,17 @@ def process_marital_status(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
-    # Tỷ lệ tiết kiệm
+    # tính thêm Tỷ lệ tiết kiệm
     df['savings_ratio'] = (df['monthly_gross_income'] - df['cash_outflow_avg']) / df['monthly_gross_income']
     
-    # Điểm ổn định việc làm
+    #  Tính thêm Điểm ổn định việc làm
     df['employment_stability_score'] = df['employer_tenure_years'] * 10 + df['address_tenure_years'] * 5
     
-    # Điểm tín dụng điều chỉnh
+    # Tính thêm Điểm tín dụng điều chỉnh
     df['adjusted_credit_score'] = df['credit_score'].astype(float)  # Chuyển đổi sang float trước
     df.loc[df['active_trade_lines'] < 5, 'adjusted_credit_score'] *= 1.2  # Tăng 20% cho người mới
     
-    # Điểm tổng hợp
+    # Tính thêm Điểm tổng hợp
     df['composite_score'] = (
         df['adjusted_credit_score'] * 0.4 +
         df['employment_stability_score'] * 0.3 +
@@ -274,6 +275,7 @@ def preprocess_for_inference(df: pd.DataFrame, ohe: OneHotEncoder, scaler: Stand
     X_new = pd.DataFrame(X_new, columns=feature_names)
     X_new = X_new[feature_cols]
     
+    #################đoạn này có thể custom lại né####################
     return X_new, generate_customer_advice(df)
 
 def adjust_weights(df: pd.DataFrame) -> pd.DataFrame:
@@ -322,6 +324,9 @@ def adjust_approval_threshold(df: pd.DataFrame) -> pd.DataFrame:
     df.loc[stable_low_income, 'approval_threshold'] *= 0.95
     
     return df
+
+######################### Tạo gợi ý, lợi khuyên ############################################# Cái này có thể xem tính hợp với bên em
+
 
 def generate_customer_advice(df: pd.DataFrame) -> dict:
     """

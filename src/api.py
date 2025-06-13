@@ -163,11 +163,14 @@ async def score(inputs: List[LoanApplication]) -> Dict[str, Any]:
         df = pd.DataFrame([i.dict() for i in inputs])
         
         # Preprocess data
+        ### Chỗ này a thử làm về phần advice k đc thì bỏ cũng thay thế cũng đc nhé vì advice của a chỉ if else thôi. ch có sử dụng shap
         X_new, advice = preprocess_for_inference(df, ohe, scaler, feature_names)
         
         # Make prediction
         dmatrix = xgb.DMatrix(X_new)
         proba = model.predict(dmatrix)
+        
+        ## Có thể điều chỉnh chỗ này tỉ lệ thresh sold khác
         label = (proba >= 0.5).astype(int)
         
         # SHAP explanations
