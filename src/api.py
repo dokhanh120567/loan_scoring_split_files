@@ -4,7 +4,7 @@ import joblib
 import xgboost as xgb
 import pandas as pd
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Body
 from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Any, Optional
 from fastapi.middleware.cors import CORSMiddleware
@@ -163,7 +163,6 @@ async def score(inputs: List[LoanApplication]) -> Dict[str, Any]:
         df = pd.DataFrame([i.dict() for i in inputs])
         
         # Preprocess data
-        ### Chỗ này a thử làm về phần advice k đc thì bỏ cũng thay thế cũng đc nhé vì advice của a chỉ if else thôi. ch có sử dụng shap
         X_new, advice = preprocess_for_inference(df, ohe, scaler, feature_names)
         
         # Make prediction

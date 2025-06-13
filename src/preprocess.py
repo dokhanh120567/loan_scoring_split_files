@@ -169,6 +169,8 @@ def preprocess_for_training(df: pd.DataFrame, ohe: OneHotEncoder, scaler: Standa
     df = adjust_approval_threshold(df)
     df = rule_based_checks(df)
     df = process_marital_status(df)
+    df = adjust_employment_weights(df)
+    df = adjust_marital_status_weights(df)
     
     cat_cols = [
         'loan_purpose_code', 'employment_status', 'housing_status', 'educational_level',
@@ -322,6 +324,61 @@ def adjust_approval_threshold(df: pd.DataFrame) -> pd.DataFrame:
     # Giảm ngưỡng cho người có thu nhập thấp nhưng ổn định
     stable_low_income = (df['monthly_gross_income'] < 30000000) & (df['employer_tenure_years'] > 5)
     df.loc[stable_low_income, 'approval_threshold'] *= 0.95
+    
+    return df
+
+def adjust_employment_weights(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Điều chỉnh trọng số dựa trên tình trạng việc làm
+    """
+    # Tạo bản sao để tránh thay đổi dữ liệu gốc
+    df = df.copy()
+    
+    # Điều chỉnh trọng số cho người thất nghiệp
+    unemployed_mask = df['employment_status'] == 'Unemployed'
+    if unemployed_mask.any():
+        # Giảm xác suất phê duyệt cho người thất nghiệp
+        df.loc[unemployed_mask, 'employment_status_weight'] = 0.3
+    
+    # Điều chỉnh trọng số cho người làm việc toàn thời gian
+    full_time_mask = df['employment_status'] == 'Full-Time'
+    if full_time_mask.any():
+        df.loc[full_time_mask, 'employment_status_weight'] = 1.0
+    
+    # Điều chỉnh trọng số cho các trạng thái khác
+    other_mask = ~(unemployed_mask | full_time_mask)
+    if other_mask.any():
+        df.loc[other_mask, 'employment_status_weight'] = 0.7
+    
+    return df
+
+def adjust_marital_status_weights(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Điều chỉnh trọng số dựa trên tình trạng hôn nhân
+    """
+    # Tạo bản sao để tránh thay đổi dữ liệu gốc
+    df = df.copy()
+    
+    # Điều chỉnh trọng số cho người đã kết hôn
+    married_mask = df['marital_status'] == 'Married'
+    if married_mask.any():
+        # Tăng xác suất phê duyệt cho người đã kết hôn
+        df.loc[married_mask, 'marital_status_weight'] = 1.0
+    
+    # Điều chỉnh trọng số cho người độc thân
+    single_mask = df['marital_status'] == 'Single'
+    if single_mask.any():
+        df.loc[single_mask, 'marital_status_weight'] = 0.8
+    
+    # Điều chỉnh trọng số cho người ly hôn
+    divorced_mask = df['marital_status'] == 'Divorced'
+    if divorced_mask.any():
+        df.loc[divorced_mask, 'marital_status_weight'] = 0.6
+    
+    # Điều chỉnh trọng số cho các trạng thái khác
+    other_mask = ~(married_mask | single_mask | divorced_mask)
+    if other_mask.any():
+        df.loc[other_mask, 'marital_status_weight'] = 0.7
     
     return df
 

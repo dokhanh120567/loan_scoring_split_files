@@ -48,26 +48,30 @@ def train_model(X_train, y_train):
     # 👉 Chuyển sang DMatrix
     dtrain = xgb.DMatrix(X_train, label=y_train)
 
-    # 👉 Cấu hình XGBoost
+    # 👉 Cấu hình XGBoost với các tham số được tinh chỉnh
     params = {
         "objective": "binary:logistic",
         "eval_metric": "auc",
-        "max_depth": 6,
-        "eta": 0.1,
+        "max_depth": 4,  # Giảm độ sâu để tránh overfitting
+        "eta": 0.05,     # Giảm learning rate để học chậm hơn
         "subsample": 0.8,
         "colsample_bytree": 0.8,
-        "min_child_weight": 1,
-        "gamma": 0.1,
-        "tree_method": "hist"
+        "min_child_weight": 3,  # Tăng để tránh overfitting
+        "gamma": 0.2,    # Tăng để tăng độ chặt chẽ của cây
+        "tree_method": "hist",
+        "scale_pos_weight": 1.5,  # Điều chỉnh cho class imbalance
+        "max_leaves": 16,  # Giới hạn số lá để tránh overfitting
+        "max_bin": 256,   # Tăng độ chính xác của histogram
+        "grow_policy": "lossguide"  # Tập trung vào việc giảm loss
     }
 
-    # 👉 Train model
+    # 👉 Train model với early stopping
     model = xgb.train(
         params,
         dtrain,
-        num_boost_round=200,
+        num_boost_round=500,  # Tăng số vòng lặp
         evals=[(dtrain, "train")],
-        early_stopping_rounds=20,
+        early_stopping_rounds=50,  # Tăng số vòng dừng sớm
         verbose_eval=10
     )
     return model
