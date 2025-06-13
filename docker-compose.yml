@@ -1,18 +1,38 @@
-version: "3.9"
+version: '3.8'
 
 services:
-  loan-api:
-    build:
-      context: .
+  api:
+    build: .
     ports:
       - "8000:8000"
-    depends_on:
-      - mysql
-    env_file:
-      - .env
     volumes:
-      - .:/app
-    command: uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+      - ./model:/app/model
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - API_HOST=${API_HOST}
+      - API_PORT=${API_PORT}
+      - API_WORKERS=${API_WORKERS}
+      - API_RELOAD=${API_RELOAD}
+      - MODEL_PATH=${MODEL_PATH}
+      - ENCODER_PATH=${ENCODER_PATH}
+      - SCALER_PATH=${SCALER_PATH}
+      - FEATURES_PATH=${FEATURES_PATH}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LOG_FORMAT=${LOG_FORMAT}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
+      - ALLOWED_METHODS=${ALLOWED_METHODS}
+      - ALLOWED_HEADERS=${ALLOWED_HEADERS}
+      - ENABLE_SHAP=${ENABLE_SHAP}
+      - ENABLE_LOGGING=${ENABLE_LOGGING}
+      - ENABLE_METRICS=${ENABLE_METRICS}
+      - APPROVAL_THRESHOLD=${APPROVAL_THRESHOLD}
+      - MAX_BATCH_SIZE=${MAX_BATCH_SIZE}
+    restart: unless-stopped
 
   mysql:
     image: mysql:8.0
