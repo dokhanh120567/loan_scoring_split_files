@@ -39,8 +39,6 @@ htmlcov/
 docker-compose.override.yml
 
 # SHAP artifacts (if large)
-model/explainer.pkl
-
 # MySQL volume (optional)
 mysql_data/
 
@@ -49,8 +47,6 @@ mysql_data/
 *.sql
 
 # Models & artifacts
-model/*.json
-model/*.pkl
 
 # Others
 *.bak
