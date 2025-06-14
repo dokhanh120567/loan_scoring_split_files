@@ -161,6 +161,8 @@ def preprocess_for_training(df: pd.DataFrame, ohe, scaler, categorical_features,
         columns=ohe.get_feature_names_out(categorical_features)
     )
     # Transform numerical features
+    # Chuyển đổi bankruptcy_flag sang int trước khi transform
+    X['bankruptcy_flag'] = X['bankruptcy_flag'].astype(int)
     num_data = scaler.transform(X[numerical_features])
     num_df = pd.DataFrame(
         num_data,
@@ -175,45 +177,78 @@ def preprocess_for_training(df: pd.DataFrame, ohe, scaler, categorical_features,
 # ⚙️ Dùng trong API khi đã có ohe + scaler
 # -----------------------------
 def preprocess_for_inference(df: pd.DataFrame, ohe: OneHotEncoder, scaler: StandardScaler, feature_cols: list):
-    df = add_derived_features(df)
-    df = rule_based_checks(df)
-    
-    cat_cols = [
-        'employment_status', 'housing_status'
-    ]
-    num_cols = [
-        'employer_tenure_years', 'monthly_net_income', 'dti_ratio', 'credit_score',
-        'delinquencies_30d', 'industry_unemployment_rate', 'income_gap_ratio'
-    ]
-    bool_cols = ['bankruptcy_flag']
-    
-    # Convert boolean to int8
-    for col in bool_cols:
-        df[col] = df[col].astype(np.int8)
-    
-    # Transform categorical features to sparse matrix
-    cat_vals = ohe.transform(df[cat_cols])
-    cat_feature_names = ohe.get_feature_names_out(cat_cols)
-    
-    # Transform numeric features and convert to float32
-    num_vals = scaler.transform(df[num_cols]).astype(np.float32)
-    num_df = pd.DataFrame(num_vals, columns=num_cols, index=df.index)
-    
-    # Convert boolean features to int8
-    bool_df = df[bool_cols].astype(np.int8)
-    
-    # Combine all features
-    X_new = sparse.hstack([sparse.csr_matrix(num_df), sparse.csr_matrix(bool_df), cat_vals])
-    
-    # Create feature names list
-    feature_names = num_cols + bool_cols + cat_feature_names.tolist()
-    
-    # Convert to dense matrix only for the required features
-    X_new = X_new.todense()
-    X_new = pd.DataFrame(X_new, columns=feature_names)
-    X_new = X_new[feature_cols]
-    
-    return X_new
+    try:
+        print("\n=== DEBUG INFO ===")
+        print("1. Input DataFrame info:")
+        print("Shape:", df.shape)
+        print("Columns:", df.columns.tolist())
+        print("Dtypes:", df.dtypes)
+        
+        print("\n2. Required feature_cols:")
+        print("Length:", len(feature_cols))
+        print("Features:", feature_cols)
+        
+        df = add_derived_features(df)
+        print("\n3. After add_derived_features:")
+        print("Shape:", df.shape)
+        print("Columns:", df.columns.tolist())
+        print("Dtypes:", df.dtypes)
+        
+        # Lấy thứ tự numerical features từ feature_cols
+        numerical_features = [col for col in feature_cols if col not in ohe.get_feature_names_out()]
+        print("\n4. Numerical features from feature_cols:")
+        print("Features:", numerical_features)
+        
+        cat_cols = [
+            'employment_status', 'housing_status', 'loan_purpose_code'
+        ]
+        
+        print("\n5. Column groups:")
+        print("Categorical:", cat_cols)
+        print("Numerical:", numerical_features)
+        
+        # Transform categorical features
+        print("\n6. Categorical transformation:")
+        print("Input shape:", df[cat_cols].shape)
+        cat_vals = ohe.transform(df[cat_cols])
+        cat_feature_names = ohe.get_feature_names_out(cat_cols)
+        print("Output shape:", cat_vals.shape)
+        print("Feature names:", cat_feature_names.tolist())
+        
+        # Transform numerical features
+        print("\n7. Numerical transformation:")
+        # Chuyển đổi bankruptcy_flag sang int trước khi transform
+        df['bankruptcy_flag'] = df['bankruptcy_flag'].astype(int)
+        # Đảm bảo thứ tự các cột giống với numerical_features
+        num_vals = scaler.transform(df[numerical_features]).astype(np.float32)
+        num_df = pd.DataFrame(num_vals, columns=numerical_features, index=df.index)
+        print("Output shape:", num_vals.shape)
+        print("Columns:", num_df.columns.tolist())
+        
+        # Combine features
+        print("\n8. Combining features:")
+        # Tạo DataFrame trực tiếp từ cat_vals (numpy array)
+        cat_df = pd.DataFrame(cat_vals, columns=cat_feature_names, index=df.index)
+        X_new = pd.concat([cat_df, num_df], axis=1)
+        print("Final shape:", X_new.shape)
+        print("Final columns:", X_new.columns.tolist())
+        
+        # Đảm bảo thứ tự features giống với feature_cols
+        print("\n9. Reindexing to match feature_cols order:")
+        X_new = X_new.reindex(columns=feature_cols)
+        print("Final shape:", X_new.shape)
+        print("Final columns:", X_new.columns.tolist())
+        
+        return X_new
+        
+    except Exception as e:
+        print("\n=== ERROR INFO ===")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        import traceback
+        print("\nFull traceback:")
+        print(traceback.format_exc())
+        raise
 
 def adjust_weights(df: pd.DataFrame) -> pd.DataFrame:
     # Nhóm 1: Người mới bắt đầu (thời gian làm việc < 3 năm)
@@ -340,34 +375,31 @@ def generate_customer_advice(df: pd.DataFrame) -> dict:
     if df['employer_tenure_years'].iloc[0] >= 5:
         advice["strengths"].append(f"Bạn có {df['employer_tenure_years'].iloc[0]} năm kinh nghiệm làm việc, thể hiện sự ổn định tốt")
         
-    if df['educational_level'].iloc[0] in ['Master', 'MBA', 'Doctorate']:
-        advice["strengths"].append(f"Trình độ {df['educational_level'].iloc[0]} của bạn là một điểm cộng lớn")
-        
-    if df['position_in_company'].iloc[0] in ['Director', 'Senior Mgr', 'Owner']:
-        advice["strengths"].append(f"Vị trí {df['position_in_company'].iloc[0]} thể hiện năng lực và trách nhiệm cao")
-        
     if df['housing_status'].iloc[0] in ['Own', 'Mortgage']:
         advice["strengths"].append("Việc sở hữu nhà riêng là một điểm cộng về tài sản thế chấp")
         
-    # Phân tích điểm cần cải thiện
-    if df['active_trade_lines'].iloc[0] < 5:
-        advice["improvements"].append("Lịch sử tín dụng của bạn còn khá mỏng, nên xây dựng thêm các mối quan hệ tín dụng")
+    if df['employment_status'].iloc[0] == 'Full-Time':
+        advice["strengths"].append("Công việc toàn thời gian thể hiện sự ổn định trong thu nhập")
         
-    if df['revolving_utilisation'].iloc[0] > 0.5:
-        advice["improvements"].append("Tỷ lệ sử dụng hạn mức tín dụng của bạn khá cao, nên giảm bớt")
+    # Phân tích điểm cần cải thiện
+    if df['delinquencies_30d'].iloc[0] > 0:
+        advice["improvements"].append(f"Bạn có {df['delinquencies_30d'].iloc[0]} lần chậm thanh toán trong 30 ngày, nên cải thiện lịch sử thanh toán")
         
     if df['dti_ratio'].iloc[0] > 0.5:
         advice["improvements"].append("Tỷ lệ nợ/thu nhập của bạn khá cao, nên giảm bớt các khoản nợ hiện tại")
         
-    # Đề xuất cải thiện
-    if df['active_trade_lines'].iloc[0] < 5:
-        advice["suggestions"].append("Cân nhắc mở thêm 1-2 thẻ tín dụng và sử dụng có trách nhiệm")
+    if df['bankruptcy_flag'].iloc[0] == 1:
+        advice["improvements"].append("Lịch sử phá sản có thể ảnh hưởng đến khả năng vay vốn")
         
-    if df['monthly_gross_income'].iloc[0] < 30000000:
+    # Đề xuất cải thiện
+    if df['monthly_net_income'].iloc[0] < 10000000:
         advice["suggestions"].append("Có thể cân nhắc tìm kiếm nguồn thu nhập bổ sung")
         
-    if df['savings_ratio'].iloc[0] < 0.2:
-        advice["suggestions"].append("Nên tăng tỷ lệ tiết kiệm lên ít nhất 20% thu nhập")
+    if df['employer_tenure_years'].iloc[0] < 2:
+        advice["suggestions"].append("Nên duy trì công việc hiện tại để thể hiện sự ổn định")
+        
+    if df['housing_status'].iloc[0] in ['Rent', 'Other']:
+        advice["suggestions"].append("Cân nhắc việc sở hữu tài sản để tăng khả năng vay vốn")
         
     # Hướng dẫn tiếp theo
     advice["next_steps"].append("Chuẩn bị đầy đủ các giấy tờ chứng minh thu nhập và tài sản")
