@@ -19,7 +19,7 @@ else:
 # 📥 Load dữ liệu từ MySQL
 # -----------------------------
 def load_data():
-    df = pd.read_csv("data/loan_applications_35.csv")
+    df = pd.read_csv("data/loan100.csv")
     print("\nThông tin DataFrame:")
     print(f"Shape: {df.shape}")
     print("\nCác cột trong DataFrame:")
@@ -65,69 +65,57 @@ def process_marital_status(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
-    # tính thêm Tỷ lệ tiết kiệm
-    df['savings_ratio'] = (df['monthly_gross_income'] - df['cash_outflow_avg']) / df['monthly_gross_income']
+    # Tính thêm Điểm ổn định việc làm (chỉ dùng employer_tenure_years vì address_tenure_years không còn)
+    df['employment_stability_score'] = df['employer_tenure_years'] * 10
     
-    #  Tính thêm Điểm ổn định việc làm
-    df['employment_stability_score'] = df['employer_tenure_years'] * 10 + df['address_tenure_years'] * 5
+    # Tính thêm Điểm tín dụng điều chỉnh (chỉ dùng credit_score vì active_trade_lines không còn)
+    df['adjusted_credit_score'] = df['credit_score'].astype(float)
     
-    # Tính thêm Điểm tín dụng điều chỉnh
-    df['adjusted_credit_score'] = df['credit_score'].astype(float)  # Chuyển đổi sang float trước
-    df.loc[df['active_trade_lines'] < 5, 'adjusted_credit_score'] *= 1.2  # Tăng 20% cho người mới
-    
-    # Tính thêm Điểm tổng hợp
+    # Tính thêm Điểm tổng hợp (chỉ dùng các features có sẵn)
     df['composite_score'] = (
         df['adjusted_credit_score'] * 0.4 +
         df['employment_stability_score'] * 0.3 +
-        df['savings_ratio'] * 0.3
+        (1 - df['dti_ratio']) * 0.3  # Sử dụng dti_ratio thay cho savings_ratio
     )
     
     return df
 
 
 # -----------------------------
-# 🛡️ Rule-based checks cho 35 features
+# 🛡️ Rule-based checks cho các features hiện có
 # -----------------------------
-def rule_based_checks(df: pd.DataFrame) -> pd.DataFrame:
+def rule_based_checks(df):
     # Numeric rules
-    assert (df['requested_loan_amount'] >= 8410851).all() and (df['requested_loan_amount'] <= 2995999341).all(), "requested_loan_amount phải trong khoảng [8.4M, 2.99B]"
-    assert (df['tenor_requested'] >= 6).all() and (df['tenor_requested'] <= 72).all(), "tenor_requested phải trong khoảng [6, 72] tháng"
-    assert (df['employer_tenure_years'] >= 0).all() and (df['employer_tenure_years'] <= 37.5).all(), "employer_tenure_years phải trong khoảng [0, 37.5] năm"
-    assert (df['monthly_gross_income'] >= 5000124).all() and (df['monthly_gross_income'] <= 79242217).all(), "monthly_gross_income phải trong khoảng [5M, 79.2M]"
-    assert (df['monthly_net_income'] >= 3519761).all() and (df['monthly_net_income'] <= 75241072).all(), "monthly_net_income phải trong khoảng [3.5M, 75.2M]"
-    assert (df['dti_ratio'] >= 0).all() and (df['dti_ratio'] <= 1.5).all(), "dti_ratio phải trong khoảng [0, 1.5]"
-    assert (df['dependents_count'] >= 0).all() and (df['dependents_count'] <= 6).all(), "dependents_count phải trong khoảng [0, 6]"
-    assert (df['credit_score'] >= 277).all() and (df['credit_score'] <= 1041).all(), "credit_score phải trong khoảng [277, 1041]"
-    assert (df['active_trade_lines'] >= 0).all() and (df['active_trade_lines'] <= 12).all(), "active_trade_lines phải trong khoảng [0, 12]"
-    assert (df['revolving_utilisation'] >= 0).all() and (df['revolving_utilisation'] <= 1).all(), "revolving_utilisation phải trong khoảng [0, 1]"
-    assert (df['delinquencies_30d'] >= 0).all() and (df['delinquencies_30d'] <= 5).all(), "delinquencies_30d phải trong khoảng [0, 5]"
-    assert (df['avg_account_age_months'] >= 1).all() and (df['avg_account_age_months'] <= 617).all(), "avg_account_age_months phải trong khoảng [1, 617] tháng"
-    assert (df['hard_inquiries_6m'] >= 0).all() and (df['hard_inquiries_6m'] <= 8).all(), "hard_inquiries_6m phải trong khoảng [0, 8]"
-    assert (df['cash_inflow_avg'] >= 85375).all() and (df['cash_inflow_avg'] <= 79242217).all(), "cash_inflow_avg phải trong khoảng [85K, 79.2M]"
-    assert (df['cash_outflow_avg'] >= 85531).all() and (df['cash_outflow_avg'] <= 75241072).all(), "cash_outflow_avg phải trong khoảng [85K, 75.2M]"
-    assert (df['min_monthly_balance'] >= 0).all() and (df['min_monthly_balance'] <= 50000000).all(), "min_monthly_balance phải trong khoảng [0, 50M]"
-    assert df['application_time_of_day'].isin(['Morning (6-12)', 'Afternoon (12-18)', 'Night (0-6)', 'Evening (18-24)']).all(), "application_time_of_day phải là một trong các giá trị: Morning, Afternoon, Night, Evening"
-    assert (df['ip_mismatch_score'] >= 0).all() and (df['ip_mismatch_score'] <= 0.75).all(), "ip_mismatch_score phải trong khoảng [0, 0.75]"
-    assert (df['id_doc_age_years'] >= 0).all() and (df['id_doc_age_years'] <= 20).all(), "id_doc_age_years phải trong khoảng [0, 20] năm"
-    assert (df['income_gap_ratio'] >= -0.3).all() and (df['income_gap_ratio'] <= 0.3).all(), "income_gap_ratio phải trong khoảng [-0.3, 0.3]"
-    assert (df['address_tenure_years'] >= 0).all() and (df['address_tenure_years'] <= 30).all(), "address_tenure_years phải trong khoảng [0, 30] năm"
-    assert (df['industry_unemployment_rate'] >= 0.01).all() and (df['industry_unemployment_rate'] <= 0.15).all(), "industry_unemployment_rate phải trong khoảng [0.01, 0.15]"
-    assert (df['regional_economic_score'] >= 40).all() and (df['regional_economic_score'] <= 100).all(), "regional_economic_score phải trong khoảng [40, 100]"
-    assert (df['inflation_rate_yoy'] >= 0).all() and (df['inflation_rate_yoy'] <= 0.12).all(), "inflation_rate_yoy phải trong khoảng [0, 0.12]"
-    assert (df['policy_cap_ratio'] >= 0).all() and (df['policy_cap_ratio'] <= 1).all(), "policy_cap_ratio phải trong khoảng [0, 1]"
-
+    numeric_rules = {
+        'employer_tenure_years': (0, 30, "employer_tenure_years phải trong khoảng [0, 30]"),
+        'monthly_net_income': (3800000, 71100000, "monthly_net_income phải trong khoảng [3.8M, 71.1M]"),
+        'dti_ratio': (0, 1.5, "dti_ratio phải trong khoảng [0, 1.5]"),
+        'credit_score': (300, 850, "credit_score phải trong khoảng [300, 850]"),
+        'delinquencies_30d': (0, 4, "delinquencies_30d phải trong khoảng [0, 4]"),
+        'industry_unemployment_rate': (0, 0.15, "industry_unemployment_rate phải trong khoảng [0, 0.15]"),
+        'income_gap_ratio': (-0.3, 0.3, "income_gap_ratio phải trong khoảng [-0.3, 0.3]")
+    }
+    
+    for col, (min_val, max_val, msg) in numeric_rules.items():
+        assert (df[col] >= min_val).all() and (df[col] <= max_val).all(), msg
+    
     # Categorical rules
-    assert df['loan_purpose_code'].isin(['EDU', 'AGRI', 'CONSOLIDATION', 'HOME', 'TRAVEL', 'AUTO', 'MED', 'OTHER', 'BUSS', 'PL', 'RENOVATION', 'CREDIT_CARD']).all(), "loan_purpose_code không hợp lệ"
-    assert df['employment_status'].isin(['Retired', 'Student', 'Full-Time', 'Freelancer', 'Unemployed', 'Self-Employed', 'Seasonal', 'Part-Time', 'Contract']).all(), "employment_status không hợp lệ"
-    assert df['housing_status'].isin(['Family', 'Company Dorm', 'Mortgage', 'Other', 'Government', 'Own', 'Rent']).all(), "housing_status không hợp lệ"
-    assert df['educational_level'].isin(['High School', 'Other', 'Below HS', 'Vocational', 'Master', 'MBA', 'Doctorate', 'Associate', 'Bachelor']).all(), "educational_level không hợp lệ"
-    assert df['marital_status'].isin(['Separated', 'Single', 'Married', 'Common-Law', 'Widowed', 'Divorced']).all(), "marital_status không hợp lệ"
-    assert df['position_in_company'].isin(['Manager', 'Intern', 'Executive', 'Supervisor', 'Staff', 'Senior Staff', 'Director', 'Owner', 'Senior Mgr']).all(), "position_in_company không hợp lệ"
-
+    categorical_rules = {
+        'employment_status': ['Full-Time', 'Part-Time', 'Self-Employed', 'Freelancer', 'Contract', 'Seasonal', 'Unemployed', 'Retired', 'Student'],
+        'housing_status': ['Own', 'Rent', 'Mortgage', 'Family', 'Company Dorm', 'Government', 'Other']
+    }
+    
+    for col, valid_values in categorical_rules.items():
+        assert df[col].isin(valid_values).all(), f"{col} phải là một trong các giá trị: {valid_values}"
+    
     # Boolean rules
-    assert df['thin_file_flag'].isin([0, 1]).all(), "thin_file_flag phải là 0 hoặc 1"
-    assert df['bankruptcy_flag'].isin([0, 1]).all(), "bankruptcy_flag phải là 0 hoặc 1"
-
+    boolean_rules = {
+        'bankruptcy_flag': [0, 1]
+    }
+    
+    for col, valid_values in boolean_rules.items():
+        assert df[col].isin(valid_values).all(), f"{col} phải là một trong các giá trị: {valid_values}"
+    
     return df
 
 
@@ -139,19 +127,14 @@ def fit_transformers(df: pd.DataFrame):
     df = rule_based_checks(df)
     
     cat_cols = [
-        'loan_purpose_code', 'employment_status', 'housing_status', 'educational_level',
-        'marital_status', 'position_in_company', 'applicant_address', 'application_time_of_day'
+        'employment_status', 'housing_status'
     ]
     num_cols = [
-        'requested_loan_amount', 'tenor_requested', 'employer_tenure_years', 'monthly_gross_income',
-        'monthly_net_income', 'dti_ratio', 'dependents_count', 'credit_score',
-        'active_trade_lines', 'revolving_utilisation', 'delinquencies_30d', 'avg_account_age_months',
-        'hard_inquiries_6m', 'cash_inflow_avg', 'cash_outflow_avg', 'min_monthly_balance',
-        'ip_mismatch_score', 'id_doc_age_years', 'income_gap_ratio',
-        'address_tenure_years', 'industry_unemployment_rate', 'regional_economic_score', 'inflation_rate_yoy',
-        'policy_cap_ratio'
+        'employer_tenure_years', 'monthly_net_income', 'dti_ratio', 'credit_score',
+        'delinquencies_30d', 'industry_unemployment_rate', 'income_gap_ratio'
     ]
-    bool_cols = ['thin_file_flag', 'bankruptcy_flag']
+    bool_cols = ['bankruptcy_flag']
+    
     ohe = OneHotEncoder(sparse_output=True, handle_unknown='ignore')
     ohe.fit(df[cat_cols])
     scaler = StandardScaler()
@@ -164,28 +147,16 @@ def fit_transformers(df: pd.DataFrame):
 # -----------------------------
 def preprocess_for_training(df: pd.DataFrame, ohe: OneHotEncoder, scaler: StandardScaler):
     df = add_derived_features(df)
-    df = adjust_weights(df)
-    df = apply_compensation_rules(df)
-    df = adjust_approval_threshold(df)
     df = rule_based_checks(df)
-    df = process_marital_status(df)
-    df = adjust_employment_weights(df)
-    df = adjust_marital_status_weights(df)
     
     cat_cols = [
-        'loan_purpose_code', 'employment_status', 'housing_status', 'educational_level',
-        'marital_status', 'position_in_company', 'applicant_address', 'application_time_of_day'
+        'employment_status', 'housing_status'
     ]
     num_cols = [
-        'requested_loan_amount', 'tenor_requested', 'employer_tenure_years', 'monthly_gross_income',
-        'monthly_net_income', 'dti_ratio', 'dependents_count', 'credit_score',
-        'active_trade_lines', 'revolving_utilisation', 'delinquencies_30d', 'avg_account_age_months',
-        'hard_inquiries_6m', 'cash_inflow_avg', 'cash_outflow_avg', 'min_monthly_balance',
-        'ip_mismatch_score', 'id_doc_age_years', 'income_gap_ratio',
-        'address_tenure_years', 'industry_unemployment_rate', 'regional_economic_score', 'inflation_rate_yoy',
-        'policy_cap_ratio'
+        'employer_tenure_years', 'monthly_net_income', 'dti_ratio', 'credit_score',
+        'delinquencies_30d', 'industry_unemployment_rate', 'income_gap_ratio'
     ]
-    bool_cols = ['thin_file_flag', 'bankruptcy_flag']
+    bool_cols = ['bankruptcy_flag']
     
     # Convert boolean to int8
     for col in bool_cols:
@@ -231,25 +202,16 @@ def preprocess_for_training(df: pd.DataFrame, ohe: OneHotEncoder, scaler: Standa
 # -----------------------------
 def preprocess_for_inference(df: pd.DataFrame, ohe: OneHotEncoder, scaler: StandardScaler, feature_cols: list):
     df = add_derived_features(df)
-    df = adjust_weights(df)
-    df = apply_compensation_rules(df)
-    df = adjust_approval_threshold(df)
     df = rule_based_checks(df)
     
     cat_cols = [
-        'loan_purpose_code', 'employment_status', 'housing_status', 'educational_level',
-        'marital_status', 'position_in_company', 'applicant_address', 'application_time_of_day'
+        'employment_status', 'housing_status'
     ]
     num_cols = [
-        'requested_loan_amount', 'tenor_requested', 'employer_tenure_years', 'monthly_gross_income',
-        'monthly_net_income', 'dti_ratio', 'dependents_count', 'credit_score',
-        'active_trade_lines', 'revolving_utilisation', 'delinquencies_30d', 'avg_account_age_months',
-        'hard_inquiries_6m', 'cash_inflow_avg', 'cash_outflow_avg', 'min_monthly_balance',
-        'ip_mismatch_score', 'id_doc_age_years', 'income_gap_ratio',
-        'address_tenure_years', 'industry_unemployment_rate', 'regional_economic_score', 'inflation_rate_yoy',
-        'policy_cap_ratio'
+        'employer_tenure_years', 'monthly_net_income', 'dti_ratio', 'credit_score',
+        'delinquencies_30d', 'industry_unemployment_rate', 'income_gap_ratio'
     ]
-    bool_cols = ['thin_file_flag', 'bankruptcy_flag']
+    bool_cols = ['bankruptcy_flag']
     
     # Convert boolean to int8
     for col in bool_cols:
@@ -277,8 +239,7 @@ def preprocess_for_inference(df: pd.DataFrame, ohe: OneHotEncoder, scaler: Stand
     X_new = pd.DataFrame(X_new, columns=feature_names)
     X_new = X_new[feature_cols]
     
-    #################đoạn này có thể custom lại né####################
-    return X_new, generate_customer_advice(df)
+    return X_new
 
 def adjust_weights(df: pd.DataFrame) -> pd.DataFrame:
     # Nhóm 1: Người mới bắt đầu (thời gian làm việc < 3 năm)
