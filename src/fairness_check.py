@@ -21,9 +21,8 @@ THRESHOLD = 0.5  # Ngưỡng phê duyệt hồ sơ
 def unfairness_metrics():
     # 👇 Load & tiền xử lý dữ liệu
     df = load_data()
-    df = df[df['gender'].notnull()]  # Clean nếu cần
-    ohe, scaler = fit_transformers(df)
-    X, y = preprocess_for_training(df, ohe, scaler)
+    ohe, scaler, categorical_features, numerical_features = fit_transformers(df)
+    X, y, feature_names = preprocess_for_training(df, ohe, scaler, categorical_features, numerical_features)
     df_raw = df.copy()
 
     # 👇 Load mô hình
@@ -34,42 +33,41 @@ def unfairness_metrics():
     y_prob = bst.predict(dmatrix)
     y_pred = (y_prob >= THRESHOLD).astype(int)
 
-    # 👇 Kiểm tra fairness theo giới tính
-    print("\n📊 --- Fairness metrics by gender ---")
-    gender_metrics = check_fairness_metrics(y, y_pred, df_raw['gender'])
-    print_metrics(gender_metrics)
-
     # 👇 Kiểm tra fairness theo tình trạng việc làm
     print("\n📊 --- Fairness metrics by employment status ---")
     employment_metrics = check_fairness_metrics(y, y_pred, df_raw['employment_status'])
     print_metrics(employment_metrics)
 
-    # 👇 Kiểm tra fairness theo tình trạng hôn nhân
-    print("\n📊 --- Fairness metrics by marital status ---")
-    marital_metrics = check_fairness_metrics(y, y_pred, df_raw['marital_status'])
-    print_metrics(marital_metrics)
+    # 👇 Kiểm tra fairness theo tình trạng nhà ở
+    print("\n📊 --- Fairness metrics by housing status ---")
+    housing_metrics = check_fairness_metrics(y, y_pred, df_raw['housing_status'])
+    print_metrics(housing_metrics)
 
-    # 👇 Phân tích chi tiết theo nhóm
-    print("\n📊 --- Detailed analysis by marital status ---")
-    analyze_marital_status_metrics(df_raw, y_pred)
+    # 👇 Kiểm tra fairness theo mục đích vay
+    print("\n📊 --- Fairness metrics by loan purpose code ---")
+    purpose_metrics = check_fairness_metrics(y, y_pred, df_raw['loan_purpose_code'])
+    print_metrics(purpose_metrics)
+
 
 def check_fairness_metrics(y_true, y_pred, sensitive_feature):
-    metrics = {
-        'selection_rate': selection_rate,
-        'demographic_parity_difference': demographic_parity_difference,
-        'demographic_parity_ratio': demographic_parity_ratio
+    from fairlearn.metrics import selection_rate, demographic_parity_difference, demographic_parity_ratio
+    import pandas as pd
+    # Tính selection_rate cho từng nhóm
+    groups = pd.Series(sensitive_feature).unique()
+    by_group = {}
+    for group in groups:
+        mask = (sensitive_feature == group)
+        by_group[group] = {
+            'selection_rate': selection_rate(y_true[mask], y_pred[mask]),
+        }
+    # Overall metrics
+    overall = {
+        'demographic_parity_difference': demographic_parity_difference(y_true, y_pred, sensitive_features=sensitive_feature),
+        'demographic_parity_ratio': demographic_parity_ratio(y_true, y_pred, sensitive_features=sensitive_feature)
     }
-
-    mf = MetricFrame(
-        metrics=metrics,
-        y_true=y_true,
-        y_pred=y_pred,
-        sensitive_features=sensitive_feature
-    )
-
     return {
-        'by_group': mf.by_group,
-        'overall': mf.overall
+        'by_group': by_group,
+        'overall': overall
     }
 
 def print_metrics(metrics):
@@ -78,28 +76,6 @@ def print_metrics(metrics):
     print(f"\nOverall metrics:")
     print(f"Demographic parity difference: {metrics['overall']['demographic_parity_difference']:.4f}")
     print(f"Demographic parity ratio: {metrics['overall']['demographic_parity_ratio']:.4f}")
-
-def analyze_marital_status_metrics(df, y_pred):
-    """
-    Phân tích chi tiết các metrics theo tình trạng hôn nhân
-    """
-    marital_groups = df['marital_status'].unique()
-    
-    for status in marital_groups:
-        mask = df['marital_status'] == status
-        group_size = mask.sum()
-        approval_rate = y_pred[mask].mean()
-        
-        print(f"\n{status}:")
-        print(f"  - Số lượng: {group_size}")
-        print(f"  - Tỷ lệ phê duyệt: {approval_rate:.2%}")
-        
-        # Tính các metrics khác nếu cần
-        if group_size > 0:
-            avg_income = df.loc[mask, 'monthly_gross_income'].mean()
-            avg_credit = df.loc[mask, 'credit_score'].mean()
-            print(f"  - Thu nhập trung bình: {avg_income:,.0f}")
-            print(f"  - Điểm tín dụng trung bình: {avg_credit:.0f}")
 
 if __name__ == "__main__":
     unfairness_metrics()

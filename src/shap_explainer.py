@@ -6,6 +6,7 @@ import xgboost as xgb
 import shap
 import pickle
 import joblib
+import numpy as np
 
 from src.preprocess import load_data, fit_transformers, preprocess_for_training
 
@@ -22,8 +23,8 @@ def build_explainer():
 
     print("📥 Loading & preprocessing data...")
     df = load_data()
-    ohe, scaler = fit_transformers(df)
-    X, _ = preprocess_for_training(df, ohe, scaler)
+    ohe, scaler, categorical_features, numerical_features = fit_transformers(df)
+    X, _, _ = preprocess_for_training(df, ohe, scaler, categorical_features, numerical_features)
 
     print("🧠 Building SHAP explainer...")
     explainer = shap.TreeExplainer(bst, data=X, feature_perturbation='tree_path_dependent')
@@ -47,66 +48,48 @@ def explain_with_shap(model, X, feature_names):
     # Lấy giá trị thực tế của các features
     feature_values = X.iloc[0] if isinstance(X, pd.DataFrame) else X[0]
     
-    # Định nghĩa các nhóm categorical
+    # Định nghĩa các nhóm categorical dựa trên dữ liệu thực tế
     categorical_groups = {
         'employment': ['employment_status_'],
-        'education': ['educational_level_'],
         'housing': ['housing_status_'],
-        'marital': ['marital_status_'],
-        'position': ['position_in_company_'],
         'loan_purpose': ['loan_purpose_code_']
     }
     
-    # Định nghĩa fairness weights cho từng nhóm
+    # Định nghĩa fairness weights dựa trên kết quả fairness check
     fairness_weights = {
         'employment': {
             'Full-Time': 1.0,
-            'Part-Time': 0.8,
-            'Self-Employed': 0.9,
-            'Contract': 0.85,
-            'Freelancer': 0.8,
-            'Student': 0.7,
-            'Retired': 0.9,
-            'Unemployed': 0.6,
-            'Seasonal': 0.75
-        },
-        'education': {
-            'Doctorate': 1.0,
-            'Master': 0.95,
-            'MBA': 0.95,
-            'Bachelor': 0.9,
-            'Associate': 0.85,
-            'Vocational': 0.8,
-            'High School': 0.75,
-            'Below HS': 0.7
+            'Part-Time': 0.9,
+            'Self-Employed': 0.85,
+            'Contract': 0.9,
+            'Freelancer': 0.95,
+            'Student': 0.7,  # Tỷ lệ phê duyệt thấp nhất
+            'Retired': 0.8,
+            'Unemployed': 0.75,
+            'Seasonal': 1.0  # Tỷ lệ phê duyệt cao nhất
         },
         'housing': {
-            'Own': 1.0,
-            'Mortgage': 0.9,
+            'Own': 0.9,
+            'Mortgage': 0.85,
             'Rent': 0.8,
-            'Family': 0.85,
-            'Company Dorm': 0.75,
+            'Family': 0.8,
+            'Company Dorm': 1.0,  # Tỷ lệ phê duyệt cao nhất
             'Government': 0.8,
-            'Other': 0.7
+            'Other': 0.7  # Tỷ lệ phê duyệt thấp nhất
         },
-        'marital': {
-            'Married': 1.0,
-            'Single': 0.9,
-            'Divorced': 0.85,
-            'Widowed': 0.9,
-            'Separated': 0.8,
-            'Common-Law': 0.85
-        },
-        'position': {
-            'Director': 1.0,
-            'Executive': 0.95,
-            'Manager': 0.9,
-            'Senior Mgr': 0.9,
-            'Senior Staff': 0.85,
-            'Staff': 0.8,
-            'Supervisor': 0.85,
-            'Intern': 0.7,
-            'Owner': 0.95
+        'loan_purpose': {
+            'EDU': 0.7,  # Tỷ lệ phê duyệt thấp nhất
+            'AGRI': 0.85,
+            'CONSOLIDATION': 0.8,
+            'HOME': 0.8,
+            'TRAVEL': 0.9,
+            'AUTO': 0.85,
+            'MED': 0.85,
+            'OTHER': 0.9,
+            'BUSS': 0.95,
+            'PL': 1.0,  # Tỷ lệ phê duyệt cao nhất
+            'RENOVATION': 0.9,
+            'CREDIT_CARD': 0.8
         }
     }
     

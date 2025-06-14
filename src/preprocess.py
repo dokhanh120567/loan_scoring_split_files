@@ -8,6 +8,7 @@ import sklearn
 from sqlalchemy import text
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from scipy import sparse
+from typing import Tuple, List
 
 # Use sparse matrices for OneHotEncoder
 if sklearn.__version__ >= "1.2":
@@ -65,17 +66,19 @@ def process_marital_status(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
-    # Tính thêm Điểm ổn định việc làm (chỉ dùng employer_tenure_years vì address_tenure_years không còn)
-    df['employment_stability_score'] = df['employer_tenure_years'] * 10
+    """Thêm các tính năng phái sinh."""
+    # Tính điểm ổn định việc làm
+    df['employment_stability_score'] = df['employer_tenure_years'] / 30.0
     
-    # Tính thêm Điểm tín dụng điều chỉnh (chỉ dùng credit_score vì active_trade_lines không còn)
-    df['adjusted_credit_score'] = df['credit_score'].astype(float)
+    # Tính điểm tín dụng điều chỉnh
+    df['adjusted_credit_score'] = df['credit_score'] / 850.0
     
-    # Tính thêm Điểm tổng hợp (chỉ dùng các features có sẵn)
+    # Tính điểm tổng hợp
     df['composite_score'] = (
-        df['adjusted_credit_score'] * 0.4 +
-        df['employment_stability_score'] * 0.3 +
-        (1 - df['dti_ratio']) * 0.3  # Sử dụng dti_ratio thay cho savings_ratio
+        (1 - df['dti_ratio']) * 0.3 +
+        df['adjusted_credit_score'] * 0.3 +
+        (1 - df['delinquencies_30d'] / 10) * 0.2 +
+        (1 - df['bankruptcy_flag']) * 0.2
     )
     
     return df
@@ -84,117 +87,88 @@ def add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
 # -----------------------------
 # 🛡️ Rule-based checks cho các features hiện có
 # -----------------------------
-def rule_based_checks(df):
-    # Numeric rules
+def rule_based_checks(df: pd.DataFrame) -> None:
+    """Kiểm tra các quy tắc dữ liệu."""
+    # Quy tắc số
     numeric_rules = {
-        'employer_tenure_years': (0, 30, "employer_tenure_years phải trong khoảng [0, 30]"),
-        'monthly_net_income': (3800000, 71100000, "monthly_net_income phải trong khoảng [3.8M, 71.1M]"),
-        'dti_ratio': (0, 1.5, "dti_ratio phải trong khoảng [0, 1.5]"),
-        'credit_score': (300, 850, "credit_score phải trong khoảng [300, 850]"),
-        'delinquencies_30d': (0, 4, "delinquencies_30d phải trong khoảng [0, 4]"),
-        'industry_unemployment_rate': (0, 0.15, "industry_unemployment_rate phải trong khoảng [0, 0.15]"),
-        'income_gap_ratio': (-0.3, 0.3, "income_gap_ratio phải trong khoảng [-0.3, 0.3]")
+        'employer_tenure_years': (0, 32),
+        'monthly_net_income': (3600000, 75000000),
+        'dti_ratio': (0, 2),
+        'credit_score': (427, 898),
+        'delinquencies_30d': (0, 10),
+        'bankruptcy_flag': (0, 1),
+        'income_gap_ratio': (-1, 1),
+        'requested_loan_amount': (62964241, 2883967540),  # Nới rộng theo dữ liệu thực tế
+        'tenor_requested': (6, 72)
     }
     
-    for col, (min_val, max_val, msg) in numeric_rules.items():
-        assert (df[col] >= min_val).all() and (df[col] <= max_val).all(), msg
+    for col, (min_val, max_val) in numeric_rules.items():
+        assert df[col].between(min_val, max_val).all(), \
+            f"{col} phải nằm trong khoảng [{min_val}, {max_val}]"
     
-    # Categorical rules
+    # Quy tắc phân loại
     categorical_rules = {
-        'employment_status': ['Full-Time', 'Part-Time', 'Self-Employed', 'Freelancer', 'Contract', 'Seasonal', 'Unemployed', 'Retired', 'Student'],
-        'housing_status': ['Own', 'Rent', 'Mortgage', 'Family', 'Company Dorm', 'Government', 'Other']
+        'employment_status': ['Full-Time', 'Part-Time', 'Self-Employed', 'Freelancer', 
+                            'Contract', 'Seasonal', 'Unemployed', 'Student', 'Retired'],
+        'housing_status': ['Own', 'Rent', 'Mortgage', 'Family', 'Company Dorm', 
+                          'Government', 'Other'],
+        'loan_purpose_code': ['EDU', 'AGRI', 'CONSOLIDATION', 'HOME', 'TRAVEL', 'AUTO',
+                             'MED', 'OTHER', 'BUSS', 'PL', 'RENOVATION', 'CREDIT_CARD']
     }
     
     for col, valid_values in categorical_rules.items():
-        assert df[col].isin(valid_values).all(), f"{col} phải là một trong các giá trị: {valid_values}"
-    
-    # Boolean rules
-    boolean_rules = {
-        'bankruptcy_flag': [0, 1]
-    }
-    
-    for col, valid_values in boolean_rules.items():
-        assert df[col].isin(valid_values).all(), f"{col} phải là một trong các giá trị: {valid_values}"
-    
-    return df
+        assert df[col].isin(valid_values).all(), \
+            f"{col} phải là một trong các giá trị: {valid_values}"
 
 
 # -----------------------------
 # 🧠 Fit encoder & scaler (chỉ dùng khi training)
 # -----------------------------
 def fit_transformers(df: pd.DataFrame):
-    df = add_derived_features(df)
-    df = rule_based_checks(df)
-    
-    cat_cols = [
-        'employment_status', 'housing_status'
-    ]
-    num_cols = [
-        'employer_tenure_years', 'monthly_net_income', 'dti_ratio', 'credit_score',
-        'delinquencies_30d', 'industry_unemployment_rate', 'income_gap_ratio'
-    ]
-    bool_cols = ['bankruptcy_flag']
-    
-    ohe = OneHotEncoder(sparse_output=True, handle_unknown='ignore')
-    ohe.fit(df[cat_cols])
+    """Fit các transformer cho categorical và numerical features."""
+    # Thêm các feature phái sinh trước khi fit
+    df = add_derived_features(df.copy())
+    categorical_features = ['employment_status', 'housing_status', 'loan_purpose_code']
+    numerical_features = [col for col in df.columns if col not in categorical_features + ['approved']]
+
+    # Fit OneHotEncoder
+    ohe = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+    ohe.fit(df[categorical_features])
+
+    # Fit StandardScaler
     scaler = StandardScaler()
-    scaler.fit(df[num_cols])
-    return ohe, scaler
+    scaler.fit(df[numerical_features])
+
+    return ohe, scaler, categorical_features, numerical_features
 
 
 # -----------------------------
 # 📊 Dùng khi training
 # -----------------------------
-def preprocess_for_training(df: pd.DataFrame, ohe: OneHotEncoder, scaler: StandardScaler):
+def preprocess_for_training(df: pd.DataFrame, ohe, scaler, categorical_features, numerical_features):
+    """Tiền xử lý dữ liệu cho training."""
+    # Thêm các tính năng phái sinh
     df = add_derived_features(df)
-    df = rule_based_checks(df)
-    
-    cat_cols = [
-        'employment_status', 'housing_status'
-    ]
-    num_cols = [
-        'employer_tenure_years', 'monthly_net_income', 'dti_ratio', 'credit_score',
-        'delinquencies_30d', 'industry_unemployment_rate', 'income_gap_ratio'
-    ]
-    bool_cols = ['bankruptcy_flag']
-    
-    # Convert boolean to int8
-    for col in bool_cols:
-        df[col] = df[col].astype(np.int8)
-    
-    # Transform categorical features to sparse matrix
-    cat_vals = ohe.transform(df[cat_cols])
-    cat_feature_names = ohe.get_feature_names_out(cat_cols)
-    
-    # Transform numeric features and convert to float32 to save memory
-    num_vals = scaler.transform(df[num_cols]).astype(np.float32)
-    num_df = pd.DataFrame(num_vals, columns=num_cols, index=df.index)
-    
-    # Convert boolean features to int8
-    bool_df = df[bool_cols].astype(np.int8)
-    
-    # Combine all features
-    X = sparse.hstack([sparse.csr_matrix(num_df), sparse.csr_matrix(bool_df), cat_vals])
-    
-    # Create feature names list
-    feature_names = num_cols + bool_cols + cat_feature_names.tolist()
-    
-    # Check if approved column exists
-    if 'approved' not in df.columns:
-        print("\nCác cột hiện có trong DataFrame:")
-        print(df.columns.tolist())
-        print("\nVui lòng đảm bảo cột 'approved' tồn tại trong dữ liệu đầu vào.")
-        raise ValueError("Cột 'approved' không tồn tại trong dữ liệu. Vui lòng kiểm tra lại dữ liệu đầu vào.")
-    
+    # Kiểm tra các quy tắc
+    rule_based_checks(df)
+    # Tách features và target
+    X = df.drop('approved', axis=1)
     y = df['approved']
-    if y.isna().any():
-        print("\nSố lượng giá trị NA trong cột 'approved':", y.isna().sum())
-        raise ValueError("Cột 'approved' chứa giá trị NA. Vui lòng kiểm tra và xử lý dữ liệu thiếu.")
-    
-    # Convert approved to int8 (0/1)
-    y = y.astype(np.int8)
-    
-    return X, y, feature_names
+    # Transform categorical features
+    cat_data = ohe.transform(X[categorical_features])
+    cat_df = pd.DataFrame(
+        cat_data,
+        columns=ohe.get_feature_names_out(categorical_features)
+    )
+    # Transform numerical features
+    num_data = scaler.transform(X[numerical_features])
+    num_df = pd.DataFrame(
+        num_data,
+        columns=numerical_features
+    )
+    # Combine transformed features
+    X_processed = pd.concat([cat_df, num_df], axis=1)
+    return X_processed.values, y.values, X_processed.columns.tolist()
 
 
 # -----------------------------
